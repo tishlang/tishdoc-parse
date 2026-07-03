@@ -19,7 +19,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/tishlang/tishdoc-parse.git"
+    "url": "git+https://github.com/tishlang/tishdoc-parse.git"
   },
   "scripts": {
     "build": "tish build --target js --no-optimize src/main.tish -o dist/tishdoc-parse.js && TISH_EXPORT_OUT=dist/tishdoc-parse.js TISH_EXPORT_NAMES=parseDocument,stringifyDiagnostics,stringifyAst node scripts/append-exports.mjs",
