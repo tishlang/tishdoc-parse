@@ -1,13 +1,12 @@
 {
   "name": "@tishlang/tishdoc-parse",
   "version": "0.1.0",
-  "private": true,
   "description": "TishDoc parse pipeline: frontmatter, includes, Markdown+directives → AST",
   "type": "module",
   "tish": {
     "module": "./src/main.tish"
   },
-  "main": "./dist/tishdoc-parse.js",
+  "main": "./src/main.tish",
   "exports": {
     ".": {
       "tish": "./src/main.tish",
@@ -26,5 +25,12 @@
     "build": "tish build --target js --no-optimize src/main.tish -o dist/tishdoc-parse.js && TISH_EXPORT_OUT=dist/tishdoc-parse.js TISH_EXPORT_NAMES=parseDocument,stringifyDiagnostics,stringifyAst node scripts/append-exports.mjs",
     "test": "tish run test/run_tests.tish && tish run test/golden_note.tish && tish run test/markdown_blocks.tish && tish run test/markdown_document.tish && tish run test/include_resolve.tish && tish run test/meta_imports.tish"
   },
-  "dependencies": {}
+  "dependencies": {},
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "src",
+    "README.md"
+  ]
 }
