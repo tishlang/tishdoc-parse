@@ -1,0 +1,380 @@
+import {
+  textNode,
+  emphasisNode,
+  italicNode,
+  strikethroughNode,
+  codeSpanNode,
+  linkNode,
+  imageNode,
+  lineBreakNode
+} from "./ast.tish"
+
+// Inline parser. Handles: `code`, **strong**, *em* / _em_, ~~strike~~,
+// [text](url), ![alt](url), <https://autolink>, hard line break (two
+// trailing spaces + \n), and backslash escapes for special characters.
+//
+// Not full CommonMark — designed for typical READMEs. Unknown markup falls
+// through as plain text.
+
+fn isAsciiAlpha(c) {
+  if (c >= "a" && c <= "z") { return true }
+  if (c >= "A" && c <= "Z") { return true }
+  return false
+}
+
+fn isAsciiAlphaNum(c) {
+  if (isAsciiAlpha(c)) { return true }
+  if (c >= "0" && c <= "9") { return true }
+  return false
+}
+
+// Match a backtick-delimited code span: `code` or ``co`de`` (matches longest
+// run of opening backticks). Returns { value, end } or null.
+fn matchCodeSpan(s, start) {
+  let n = 0
+  while ((start + n) < s.length && s.charAt(start + n) === "`") {
+    n = n + 1
+  }
+  if (n === 0) { return null }
+  let i = start + n
+  while (i < s.length) {
+    if (s.charAt(i) === "`") {
+      let m = 0
+      while ((i + m) < s.length && s.charAt(i + m) === "`") {
+        m = m + 1
+      }
+      if (m === n) {
+        let inner = s.slice(start + n, i)
+        let r = {}
+        r["value"] = inner
+        r["end"] = i + n
+        return r
+      }
+      i = i + m
+      continue
+    }
+    i = i + 1
+  }
+  return null
+}
+
+// Match `[label](href "title")` or `![label](src "title")`. `start` points at
+// the leading `[` (caller skipped any `!`). Returns { label, dest, title, end }
+// where `end` is the index AFTER the closing `)`.
+fn matchLinkOrImage(s, start) {
+  if (start >= s.length || s.charAt(start) !== "[") { return null }
+  let depth = 1
+  let i = start + 1
+  while (i < s.length) {
+    let c = s.charAt(i)
+    if (c === "\\" && (i + 1) < s.length) {
+      i = i + 2
+      continue
+    }
+    if (c === "[") { depth = depth + 1 }
+    else if (c === "]") {
+      depth = depth - 1
+      if (depth === 0) { break }
+    }
+    i = i + 1
+  }
+  if (i >= s.length) { return null }
+  let label = s.slice(start + 1, i)
+  let j = i + 1
+  if (j >= s.length || s.charAt(j) !== "(") { return null }
+  j = j + 1
+  // Skip leading whitespace inside (...)
+  while (j < s.length && (s.charAt(j) === " " || s.charAt(j) === "\t")) { j = j + 1 }
+  let dest = ""
+  if (j < s.length && s.charAt(j) === "<") {
+    j = j + 1
+    let dStart = j
+    while (j < s.length && s.charAt(j) !== ">" && s.charAt(j) !== "\n") {
+      j = j + 1
+    }
+    if (j >= s.length || s.charAt(j) !== ">") { return null }
+    dest = s.slice(dStart, j)
+    j = j + 1
+  } else {
+    let dStart = j
+    let pdepth = 0
+    while (j < s.length) {
+      let c = s.charAt(j)
+      if (c === "\\" && (j + 1) < s.length) { j = j + 2; continue }
+      if (c === "(") { pdepth = pdepth + 1 }
+      else if (c === ")") {
+        if (pdepth === 0) { break }
+        pdepth = pdepth - 1
+      } else if (c === " " || c === "\t" || c === "\n") {
+        break
+      }
+      j = j + 1
+    }
+    dest = s.slice(dStart, j)
+  }
+  // Optional title: "..." or '...' or (...)
+  let title = null
+  while (j < s.length && (s.charAt(j) === " " || s.charAt(j) === "\t")) { j = j + 1 }
+  if (j < s.length && (s.charAt(j) === "\"" || s.charAt(j) === "'")) {
+    let q = s.charAt(j)
+    j = j + 1
+    let tStart = j
+    while (j < s.length && s.charAt(j) !== q) {
+      if (s.charAt(j) === "\\" && (j + 1) < s.length) { j = j + 2; continue }
+      j = j + 1
+    }
+    if (j >= s.length) { return null }
+    title = s.slice(tStart, j)
+    j = j + 1
+    while (j < s.length && (s.charAt(j) === " " || s.charAt(j) === "\t")) { j = j + 1 }
+  }
+  if (j >= s.length || s.charAt(j) !== ")") { return null }
+  let r = {}
+  r["label"] = label
+  r["dest"] = dest
+  r["title"] = title
+  r["end"] = j + 1
+  return r
+}
+
+// Match an autolink `<https://example.com>` or `<mailto:a@b>` returning the
+// URL and the index AFTER the closing `>`. Reject anything with whitespace.
+fn matchAutolink(s, start) {
+  if (start >= s.length || s.charAt(start) !== "<") { return null }
+  let i = start + 1
+  let urlStart = i
+  while (i < s.length) {
+    let c = s.charAt(i)
+    if (c === ">") { break }
+    if (c === " " || c === "\t" || c === "\n" || c === "<") { return null }
+    i = i + 1
+  }
+  if (i >= s.length || s.charAt(i) !== ">") { return null }
+  let url = s.slice(urlStart, i)
+  let isUrl = false
+  if (url.length >= 8 && url.slice(0, 8) === "https://") { isUrl = true }
+  if (!isUrl && url.length >= 7 && url.slice(0, 7) === "http://") { isUrl = true }
+  if (!isUrl && url.length >= 7 && url.slice(0, 7) === "mailto:") { isUrl = true }
+  if (!isUrl) { return null }
+  let r = {}
+  r["url"] = url
+  r["end"] = i + 1
+  return r
+}
+
+// Match a delimiter run: count `n` consecutive copies of `ch` starting at i.
+// Used for emphasis pairing (** **, * *, ~~ ~~). Returns the matching closing
+// run such that the inner span has at least 1 char and contains no newline
+// breaks for emphasis (we forbid intra-paragraph emphasis crossing a hard
+// break for safety).
+fn matchEmphasis(s, start, ch, want) {
+  // Skip the opening run.
+  let i = start + want
+  if (i >= s.length) { return null }
+  // Inner cannot start with whitespace for proper emphasis.
+  let firstInner = s.charAt(i)
+  if (firstInner === " " || firstInner === "\t" || firstInner === "\n") { return null }
+  while (i < s.length) {
+    let c = s.charAt(i)
+    if (c === "\\" && (i + 1) < s.length) { i = i + 2; continue }
+    if (c === "`") {
+      // Skip code span so inline code doesn't swallow our delimiter.
+      let cs = matchCodeSpan(s, i)
+      if (cs !== null) { i = cs["end"]; continue }
+    }
+    if (c === ch) {
+      let n = 0
+      while ((i + n) < s.length && s.charAt(i + n) === ch) { n = n + 1 }
+      if (n >= want) {
+        // The character before the closing run must not be whitespace for
+        // valid emphasis; inner must be non-empty.
+        let prev = s.charAt(i - 1)
+        if (prev !== " " && prev !== "\t" && prev !== "\n" && i > (start + want)) {
+          let inner = s.slice(start + want, i)
+          let r = {}
+          r["inner"] = inner
+          r["end"] = i + want
+          return r
+        }
+      }
+      i = i + n
+      continue
+    }
+    i = i + 1
+  }
+  return null
+}
+
+fn flushTextRun(out, run) {
+  if (run.length > 0) {
+    out.push(textNode(run))
+  }
+}
+
+fn italicUnderscoreLeftOk(s, pos) {
+  if (pos === 0) { return true }
+  let prev = s.charAt(pos - 1)
+  if (isAsciiAlphaNum(prev)) { return false }
+  return true
+}
+
+fn italicUnderscoreRightOk(s, ch, endPos) {
+  if (ch !== "_") { return true }
+  if (endPos >= s.length) { return true }
+  let nx = s.charAt(endPos)
+  if (isAsciiAlphaNum(nx)) { return false }
+  return true
+}
+
+fn isEscapable(nx) {
+  if (nx === "\\") { return true }
+  if (nx === "`") { return true }
+  if (nx === "*") { return true }
+  if (nx === "_") { return true }
+  if (nx === "{") { return true }
+  if (nx === "}") { return true }
+  if (nx === "[") { return true }
+  if (nx === "]") { return true }
+  if (nx === "(") { return true }
+  if (nx === ")") { return true }
+  if (nx === "#") { return true }
+  if (nx === "+") { return true }
+  if (nx === "-") { return true }
+  if (nx === ".") { return true }
+  if (nx === "!") { return true }
+  if (nx === "<") { return true }
+  if (nx === ">") { return true }
+  if (nx === "~") { return true }
+  if (nx === "|") { return true }
+  return false
+}
+
+export fn parseInlineSegments(line) {
+  let out = []
+  if (line === null) {
+    return out
+  }
+  let s = typeof line === "string" ? line : String(line)
+  let pos = 0
+  let run = ""
+  while (pos < s.length) {
+    let c = s.charAt(pos)
+
+    // Backslash escape — emit next char literally.
+    // Tish JS backend block-scopes nested `let`, so we evaluate the escape
+    // condition inline (no intermediate `let esc`) to avoid scope-leak.
+    if (c === "\\" && (pos + 1) < s.length && isEscapable(s.charAt(pos + 1))) {
+      run = run + s.charAt(pos + 1)
+      pos = pos + 2
+      continue
+    }
+
+    // Hard line break (two trailing spaces + \n) inside a paragraph.
+    if (c === "\n") {
+      if (run.length >= 2 && run.slice(run.length - 2) === "  ") {
+        run = run.slice(0, run.length - 2)
+        flushTextRun(out, run)
+        run = ""
+        out.push(lineBreakNode())
+      } else {
+        flushTextRun(out, run)
+        run = ""
+        out.push(textNode("\n"))
+      }
+      pos = pos + 1
+      continue
+    }
+
+    // Inline code.
+    if (c === "`") {
+      let cs = matchCodeSpan(s, pos)
+      if (cs !== null) {
+        flushTextRun(out, run)
+        run = ""
+        out.push(codeSpanNode(cs["value"]))
+        pos = cs["end"]
+        continue
+      }
+    }
+
+    // Image: ![alt](src)
+    if (c === "!" && (pos + 1) < s.length && s.charAt(pos + 1) === "[") {
+      let m = matchLinkOrImage(s, pos + 1)
+      if (m !== null) {
+        flushTextRun(out, run)
+        run = ""
+        out.push(imageNode(m["dest"], m["label"], m["title"]))
+        pos = m["end"]
+        continue
+      }
+    }
+
+    // Link: [text](href)
+    if (c === "[") {
+      let lm = matchLinkOrImage(s, pos)
+      if (lm !== null) {
+        flushTextRun(out, run)
+        run = ""
+        let inner = parseInlineSegments(lm["label"])
+        out.push(linkNode(lm["dest"], lm["title"], inner))
+        pos = lm["end"]
+        continue
+      }
+    }
+
+    // Autolink: <https://...>
+    if (c === "<") {
+      let al = matchAutolink(s, pos)
+      if (al !== null) {
+        flushTextRun(out, run)
+        run = ""
+        out.push(linkNode(al["url"], null, [textNode(al["url"])]))
+        pos = al["end"]
+        continue
+      }
+    }
+
+    // Strong: **text**
+    if (c === "*" && (pos + 1) < s.length && s.charAt(pos + 1) === "*") {
+      let r = matchEmphasis(s, pos, "*", 2)
+      if (r !== null) {
+        flushTextRun(out, run)
+        run = ""
+        out.push(emphasisNode(parseInlineSegments(r["inner"])))
+        pos = r["end"]
+        continue
+      }
+    }
+
+    // Italic: *text* or _text_
+    // For underscore italics, require non-alphanumeric on both sides
+    // (so identifiers like `foo_bar_baz` aren't broken).
+    if ((c === "*") || (c === "_" && italicUnderscoreLeftOk(s, pos))) {
+      let r2 = matchEmphasis(s, pos, c, 1)
+      if (r2 !== null && italicUnderscoreRightOk(s, c, r2["end"])) {
+        flushTextRun(out, run)
+        run = ""
+        out.push(italicNode(parseInlineSegments(r2["inner"])))
+        pos = r2["end"]
+        continue
+      }
+    }
+
+    // Strikethrough: ~~text~~
+    if (c === "~" && (pos + 1) < s.length && s.charAt(pos + 1) === "~") {
+      let rs = matchEmphasis(s, pos, "~", 2)
+      if (rs !== null) {
+        flushTextRun(out, run)
+        run = ""
+        out.push(strikethroughNode(parseInlineSegments(rs["inner"])))
+        pos = rs["end"]
+        continue
+      }
+    }
+
+    run = run + c
+    pos = pos + 1
+  }
+  flushTextRun(out, run)
+  return out
+}

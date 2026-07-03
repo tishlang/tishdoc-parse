@@ -1,0 +1,89 @@
+import { readFile } from "tish:fs"
+import { parseDocument, stringifyAst } from "../src/main.tish"
+
+// Deep equality for JSON trees (key order from stringifyAst may differ).
+fn valueEqual(a, b) {
+  if (a === b) {
+    return true
+  }
+  if (a === null || b === null) {
+    return a === b
+  }
+  let ta = typeof a
+  let tb = typeof b
+  if (ta !== tb) {
+    return false
+  }
+  if (ta === "number" || ta === "string" || ta === "boolean") {
+    return a === b
+  }
+  if (Array.isArray(a)) {
+    if (!Array.isArray(b)) {
+      return false
+    }
+    if (a.length !== b.length) {
+      return false
+    }
+    let i = 0
+    while (i < a.length) {
+      if (!valueEqual(a[i], b[i])) {
+        return false
+      }
+      i = i + 1
+    }
+    return true
+  }
+  if (ta === "object") {
+    let keysA = Object.keys(a)
+    let keysB = Object.keys(b)
+    if (keysA.length !== keysB.length) {
+      return false
+    }
+    let ki = 0
+    while (ki < keysA.length) {
+      let k = keysA[ki]
+      let has = false
+      let kj = 0
+      while (kj < keysB.length) {
+        if (keysB[kj] === k) {
+          has = true
+        }
+        kj = kj + 1
+      }
+      if (!has) {
+        return false
+      }
+      if (!valueEqual(a[k], b[k])) {
+        return false
+      }
+      ki = ki + 1
+    }
+    return true
+  }
+  return false
+}
+
+let md = readFile("../../examples/note.tishdoc.md", "utf8")
+let pr = parseDocument(md, {})
+if (pr === null) {
+  throw "FAIL parse null"
+}
+let ast = pr["ast"]
+if (ast["meta"]["title"] !== "Example note") {
+  throw "FAIL title"
+}
+let golden = readFile("../../examples/golden/note.ast.json", "utf8")
+while (golden.length > 0) {
+  let last = golden.charAt(golden.length - 1)
+  if (last === "\n" || last === "\r") {
+    golden = golden.slice(0, golden.length - 1)
+  } else {
+    break
+  }
+}
+let parsedObj = JSON.parse(stringifyAst(ast))
+let goldenObj = JSON.parse(golden)
+if (!valueEqual(parsedObj, goldenObj)) {
+  throw "FAIL golden note.ast.json out of sync with parser; update examples/golden/note.ast.json from stringifyAst(parse(...))"
+}
+console.log("ok golden note.ast.json")

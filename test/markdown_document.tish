@@ -1,0 +1,49 @@
+// Unit tests: full document pipeline (`parseDocument`) — frontmatter, body line, diagnostics.
+// Run: `tish run test/markdown_document.tish`
+
+import { parseDocument, stringifyDiagnostics } from "../src/main.tish"
+import { assertEq, assertLen, assertType, assertTruthy } from "./parse_assert.tish"
+
+let emptyOpts = {}
+
+fn noFm(md) {
+  return parseDocument(md, emptyOpts)
+}
+
+// Body-only note: meta empty object, first block heading
+let bodyOnly = noFm("# Only\n\nText.\n")
+assertEq(bodyOnly["bodyStartLine1"], 1, "bodyOnly bodyStartLine1")
+assertLen(bodyOnly["ast"]["children"], 2, "bodyOnly children")
+assertType(bodyOnly["ast"]["children"][0], "Heading", "bodyOnly h")
+
+// YAML frontmatter + body start line (first body line is blank → line 5 in 1-based coords)
+let yamlDoc = parseDocument("---\ntitle: T\ndoc_type: note\n---\n\n# H\n", emptyOpts)
+assertEq(yamlDoc["bodyStartLine1"], 5, "yamlDoc bodyStartLine1")
+assertEq(yamlDoc["ast"]["meta"]["title"], "T", "yamlDoc meta.title")
+assertType(yamlDoc["ast"]["children"][0], "Heading", "yamlDoc first block")
+
+// JSON frontmatter (single-line JSON + blank + body)
+let jsonDoc = parseDocument("{\"title\":\"J\",\"doc_type\":\"deck\"}\n\n# B\n", emptyOpts)
+assertEq(jsonDoc["ast"]["meta"]["title"], "J", "jsonDoc title")
+assertEq(jsonDoc["bodyStartLine1"], 2, "jsonDoc bodyStartLine1 (line after JSON)")
+
+// Diagnostics accumulate for unknown meta key in strict mode (if implemented) — smoke: parse ok
+let warnDoc = parseDocument("---\nunknown_key: 1\ndoc_type: note\n---\n\nx\n", emptyOpts)
+assertTruthy(warnDoc["diagnostics"].length >= 0, "warnDoc diagnostics array")
+
+// Include diagnostic when readPartial missing
+fn readMissing(p) {
+  return null
+}
+
+let incOpts = {}
+incOpts["readPartial"] = readMissing
+let incDoc = parseDocument("::include{path=\"nope.md\"}\n", incOpts)
+assertTruthy(incDoc["diagnostics"].length > 0, "incDoc has diagnostics")
+assertLen(incDoc["ast"]["children"], 1, "incDoc children")
+assertType(incDoc["ast"]["children"][0], "Include", "incDoc block")
+
+let diagStr = stringifyDiagnostics(incDoc["diagnostics"])
+assertTruthy(diagStr.length > 2, "diagStr json")
+
+console.log("markdown_document: all tests passed")

@@ -1,0 +1,39 @@
+import { parseSimpleYamlBlock } from "../src/yaml_simple.tish"
+
+fn splitFrontmatter(raw) {
+  let diagnostics = []
+  let s = raw
+  let lines = s.split("\n")
+  let L0 = lines[0].trim()
+  if (!lines[0].startsWith("---")) {
+    return { meta: {}, body: s, metaRaw: "", diagnostics: diagnostics, language: "" }
+  }
+  let i = 1
+  let found = false
+  let matterLines = []
+  while (i < lines.length) {
+    let line = lines[i]
+    if (line.trim() === "---") {
+      found = true
+      break
+    }
+    matterLines.push(line)
+    i = i + 1
+  }
+  if (!found) {
+    return { meta: {}, body: s, metaRaw: "", diagnostics: diagnostics, language: "" }
+  }
+  let matterStr = matterLines.join("\n")
+  let bodyLines = []
+  let j = i + 1
+  while (j < lines.length) {
+    bodyLines.push(lines[j])
+    j = j + 1
+  }
+  let body = bodyLines.join("\n")
+  let meta = parseSimpleYamlBlock(matterStr)
+  return { meta: meta, body: body, metaRaw: matterStr, diagnostics: diagnostics, language: "yaml" }
+}
+
+let fm = splitFrontmatter("---\ntitle: Hello\n---\n\n# Body\n")
+console.log(JSON.stringify(fm))

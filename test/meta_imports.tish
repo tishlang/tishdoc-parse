@@ -1,0 +1,33 @@
+import { parseDocument } from "../src/main.tish"
+import { assertEq, assertLen, assertTruthy } from "./parse_assert.tish"
+
+fn readPartial(p) {
+  if (p === "partials/banner.md") {
+    return "## Banner partial\n\nFrom **partial**.\n"
+  }
+  return null
+}
+
+let opts = {}
+opts["readPartial"] = readPartial
+
+let md = ""
+md = md + "{\"title\":\"M\",\"doc_type\":\"note\",\"imports\":{\"b\":\"partials/banner.md\"}}\n\n"
+md = md + "# Main\n\nAfter.\n"
+
+let pr = parseDocument(md, opts)
+assertTruthy(pr !== null, "pr not null")
+let ch = pr["ast"]["children"]
+assertLen(ch, 4, "partial h2 + para + main h1 + para")
+assertEq(ch[0]["type"], "Heading", "first is partial heading")
+assertEq(ch[0]["level"], 2, "partial heading level 2")
+assertEq(ch[1]["type"], "Paragraph", "partial paragraph")
+assertEq(ch[2]["type"], "Heading", "main h1")
+assertEq(ch[2]["level"], 1, "main level 1")
+
+let pr2 = parseDocument(md, {})
+let ch2 = pr2["ast"]["children"]
+assertLen(ch2, 2, "no readPartial: no prepended blocks")
+assertTruthy(pr2["diagnostics"].length > 0, "warn about imports ignored")
+
+console.log("meta_imports: all tests passed")

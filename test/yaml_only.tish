@@ -1,0 +1,3 @@
+import { parseSimpleYamlBlock } from "../src/yaml_simple.tish"
+let o = parseSimpleYamlBlock("title: Hello")
+console.log(JSON.stringify(o))

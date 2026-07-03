@@ -1,0 +1,31 @@
+// Small helpers for TishDoc parser unit tests (Tish `tish run`).
+
+export fn assertEq(actual, expected, label) {
+  if (actual !== expected) {
+    throw label + ": expected " + String(expected) + " got " + String(actual)
+  }
+}
+
+export fn assertLen(arr, n, label) {
+  if (arr === null) {
+    throw label + ": value is null"
+  }
+  if (arr.length !== n) {
+    throw label + ": expected length " + String(n) + " got " + String(arr.length)
+  }
+}
+
+export fn assertType(node, ty, label) {
+  if (node === null) {
+    throw label + ": node is null"
+  }
+  if (node["type"] !== ty) {
+    throw label + ": expected type " + ty + " got " + String(node["type"])
+  }
+}
+
+export fn assertTruthy(v, label) {
+  if (!v) {
+    throw label + ": expected truthy value"
+  }
+}

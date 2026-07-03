@@ -1,0 +1,21 @@
+// Shared whitespace trim for bundled JS (duplicate `trim` top-level names break `tish build --target js`).
+
+export fn trim(s) {
+  let a = 0
+  let b = s.length
+  while (a < b) {
+    let c = s.charAt(a)
+    if (c !== " " && c !== "\t" && c !== "\r" && c !== "\n") {
+      break
+    }
+    a = a + 1
+  }
+  while (b > a) {
+    let c2 = s.charAt(b - 1)
+    if (c2 !== " " && c2 !== "\t" && c2 !== "\r" && c2 !== "\n") {
+      break
+    }
+    b = b - 1
+  }
+  return s.slice(a, b)
+}

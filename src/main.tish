@@ -1,0 +1,287 @@
+import { parseSimpleYamlBlock } from "./yaml_simple.tish"
+import { resolveIncludesInBody } from "./includes.tish"
+import { parseMarkdownToBlocks } from "./parse_blocks.tish"
+import { documentNode } from "./ast.tish"
+import { validateMeta } from "./validate_meta.tish"
+import { applyMetaImportsToBody } from "./meta_imports.tish"
+
+fn splitJsonFrontmatter(raw) {
+  if (!raw.startsWith("{")) {
+    return null
+  }
+  let depth = 0
+  let i = 0
+  let inStr = false
+  let strQuote = ""
+  let esc = false
+  while (i < raw.length) {
+    let c = raw.charAt(i)
+    if (inStr) {
+      if (esc) {
+        esc = false
+      } else if (c === "\\") {
+        esc = true
+      } else if (c === strQuote) {
+        inStr = false
+      }
+      i = i + 1
+      continue
+    }
+    if (c === "\"" || c === "'") {
+      inStr = true
+      strQuote = c
+      i = i + 1
+      continue
+    }
+    if (c === "{") {
+      depth = depth + 1
+    } else if (c === "}") {
+      depth = depth - 1
+      if (depth === 0) {
+        let jsonStr = raw.slice(0, i + 1)
+        let rest = raw.slice(i + 1)
+        let k = 0
+        while (k < rest.length) {
+          let ch = rest.charAt(k)
+          if (ch !== " " && ch !== "\t" && ch !== "\r" && ch !== "\n") {
+            break
+          }
+          k = k + 1
+        }
+        rest = rest.slice(k)
+        if (rest.length > 0 && rest.charAt(0) !== "\n") {
+          rest = "\n" + rest
+        }
+        let jr = {}
+        jr["jsonStr"] = jsonStr
+        jr["rest"] = rest
+        return jr
+      }
+    }
+    i = i + 1
+  }
+  return null
+}
+
+fn splitYamlFence(raw) {
+  let diagnostics = []
+  if (raw === null) {
+    let e0 = {}
+    e0["meta"] = {}
+    e0["body"] = ""
+    e0["metaRaw"] = ""
+    e0["diagnostics"] = diagnostics
+    e0["language"] = ""
+    e0["bodyStartLine1"] = 1
+    return e0
+  }
+  let s = typeof raw === "string" ? raw : String(raw)
+  let t = s.trim()
+  if (t.startsWith("{")) {
+    let rj = splitJsonFrontmatter(s)
+    if (rj !== null) {
+      let metaJ = {}
+      try {
+        metaJ = JSON.parse(rj["jsonStr"])
+      } catch (e) {
+        let de = {}
+        de["level"] = "error"
+        de["message"] = "Invalid JSON frontmatter"
+        diagnostics.push(de)
+        let ej = {}
+        ej["meta"] = {}
+        ej["body"] = s
+        ej["metaRaw"] = rj["jsonStr"]
+        ej["diagnostics"] = diagnostics
+        ej["language"] = "json"
+        ej["bodyStartLine1"] = 1
+        return ej
+      }
+      let okj = {}
+      okj["meta"] = metaJ
+      okj["body"] = rj["rest"]
+      okj["metaRaw"] = rj["jsonStr"]
+      okj["diagnostics"] = diagnostics
+      okj["language"] = "json"
+      let jsonLines = rj["jsonStr"].split("\n").length
+      okj["bodyStartLine1"] = jsonLines + 1
+      return okj
+    }
+  }
+
+  let lines = s.split("\n")
+  if (lines.length === 0) {
+    let e1 = {}
+    e1["meta"] = {}
+    e1["body"] = s
+    e1["metaRaw"] = ""
+    e1["diagnostics"] = diagnostics
+    e1["language"] = ""
+    e1["bodyStartLine1"] = 1
+    return e1
+  }
+  if (!lines[0].startsWith("---")) {
+    let e2 = {}
+    e2["meta"] = {}
+    e2["body"] = s
+    e2["metaRaw"] = ""
+    e2["diagnostics"] = diagnostics
+    e2["language"] = ""
+    e2["bodyStartLine1"] = 1
+    return e2
+  }
+  let lang = "yaml"
+  let rest0 = lines[0].trim().slice(3).trim()
+  if (rest0 !== "") {
+    lang = rest0
+  }
+  let i = 1
+  let found = false
+  let matterLines = []
+  while (i < lines.length) {
+    let line = lines[i]
+    if (line.trim() === "---") {
+      found = true
+      break
+    }
+    matterLines.push(line)
+    i = i + 1
+  }
+  if (!found) {
+    let du = {}
+    du["level"] = "warn"
+    du["message"] = "Unclosed frontmatter fence"
+    diagnostics.push(du)
+    let e3 = {}
+    e3["meta"] = {}
+    e3["body"] = s
+    e3["metaRaw"] = ""
+    e3["diagnostics"] = diagnostics
+    e3["language"] = ""
+    e3["bodyStartLine1"] = 1
+    return e3
+  }
+  let matterStr = matterLines.join("\n")
+  let bodyLines = []
+  let j = i + 1
+  while (j < lines.length) {
+    bodyLines.push(lines[j])
+    j = j + 1
+  }
+  let body = bodyLines.join("\n")
+  let meta = {}
+  if (lang === "yaml" || lang === "yml") {
+    meta = parseSimpleYamlBlock(matterStr)
+  } else {
+    let dw = {}
+    dw["level"] = "warn"
+    dw["message"] = "Unsupported frontmatter fence language: " + lang
+    diagnostics.push(dw)
+    let e4 = {}
+    e4["meta"] = {}
+    e4["body"] = body
+    e4["metaRaw"] = matterStr
+    e4["diagnostics"] = diagnostics
+    e4["language"] = lang
+    e4["bodyStartLine1"] = i + 2
+    return e4
+  }
+  let ok = {}
+  ok["meta"] = meta
+  ok["body"] = body
+  ok["metaRaw"] = matterStr
+  ok["diagnostics"] = diagnostics
+  ok["language"] = lang
+  ok["bodyStartLine1"] = i + 2
+  return ok
+}
+
+// Options may omit keys; direct `opts["readPartial"]` throws if the key is absent (Tish).
+fn normalizeParseOptions(options) {
+  let o = {}
+  o["readPartial"] = null
+  o["maxIncludeDepth"] = null
+  o["strictMeta"] = false
+  if (options === null) {
+    return o
+  }
+  let ks = Object.keys(options)
+  let ki = 0
+  while (ki < ks.length) {
+    let key = ks[ki]
+    if (key === "readPartial") {
+      o["readPartial"] = options[key]
+    }
+    if (key === "maxIncludeDepth") {
+      o["maxIncludeDepth"] = options[key]
+    }
+    if (key === "strictMeta") {
+      o["strictMeta"] = options[key]
+    }
+    ki = ki + 1
+  }
+  return o
+}
+
+export fn parseDocument(source, options) {
+  let allDiag = []
+  let opts = normalizeParseOptions(options)
+
+  let fm = splitYamlFence(source)
+  let di = 0
+  while (di < fm["diagnostics"].length) {
+    allDiag.push(fm["diagnostics"][di])
+    di = di + 1
+  }
+
+  let metaVm = validateMeta(fm["meta"], opts)
+  let mi = 0
+  while (mi < metaVm["diagnostics"].length) {
+    allDiag.push(metaVm["diagnostics"][mi])
+    mi = mi + 1
+  }
+
+  let body = fm["body"]
+  let imp = applyMetaImportsToBody(fm["meta"], body, opts["readPartial"], allDiag)
+  body = imp["body"]
+
+  let incOpts = {}
+  incOpts["readPartial"] = opts["readPartial"]
+  incOpts["maxDepth"] = 16
+  let mdOpt = opts["maxIncludeDepth"]
+  if (mdOpt !== null) {
+    incOpts["maxDepth"] = mdOpt
+  }
+  incOpts["visited"] = []
+  incOpts["depth"] = 0
+  let inc = resolveIncludesInBody(body, incOpts)
+  let ii = 0
+  while (ii < inc["diagnostics"].length) {
+    allDiag.push(inc["diagnostics"][ii])
+    ii = ii + 1
+  }
+
+  let bsl = fm["bodyStartLine1"]
+  if (bsl === null) {
+    bsl = 1
+  }
+  let blocks = parseMarkdownToBlocks(inc["body"])
+  let ast = documentNode(fm["meta"], blocks)
+  let pr = {}
+  pr["ast"] = ast
+  pr["diagnostics"] = allDiag
+  pr["bodyStartLine1"] = bsl
+  return pr
+}
+
+
+export fn stringifyDiagnostics(diagnostics) {
+  if (diagnostics === null) {
+    return JSON.stringify([])
+  }
+  return JSON.stringify(diagnostics)
+}
+
+export fn stringifyAst(ast) {
+  return JSON.stringify(ast)
+}

@@ -1,0 +1,181 @@
+// AST node builders — schema matches docs/schema/tishdoc-ast.schema.json
+
+export fn schemaVersion() {
+  return 1
+}
+
+export fn documentNode(meta, children) {
+  let n = {}
+  n["type"] = "Document"
+  n["schemaVersion"] = schemaVersion()
+  n["meta"] = meta
+  n["children"] = children
+  return n
+}
+
+export fn headingNode(level, children) {
+  let n = {}
+  n["type"] = "Heading"
+  n["level"] = level
+  n["children"] = children
+  return n
+}
+
+export fn paragraphNode(children) {
+  let n = {}
+  n["type"] = "Paragraph"
+  n["children"] = children
+  return n
+}
+
+export fn textNode(value) {
+  let n = {}
+  n["type"] = "Text"
+  n["value"] = value
+  return n
+}
+
+export fn emphasisNode(children) {
+  let n = {}
+  n["type"] = "Emphasis"
+  n["children"] = children
+  return n
+}
+
+export fn codeSpanNode(value) {
+  let n = {}
+  n["type"] = "CodeSpan"
+  n["value"] = value
+  return n
+}
+
+export fn listNode(ordered, items) {
+  let n = {}
+  n["type"] = "List"
+  n["ordered"] = ordered
+  n["items"] = items
+  return n
+}
+
+export fn listItemNode(children) {
+  let n = {}
+  n["type"] = "ListItem"
+  n["children"] = children
+  return n
+}
+
+export fn codeBlockNode(lang, value) {
+  let n = {}
+  n["type"] = "CodeBlock"
+  n["lang"] = lang
+  n["value"] = value
+  return n
+}
+
+export fn directiveBlockNode(name, attrs, children) {
+  let n = {}
+  n["type"] = "DirectiveBlock"
+  n["name"] = name
+  n["attrs"] = attrs
+  n["children"] = children
+  return n
+}
+
+export fn directiveLeafNode(name, attrs) {
+  let n = {}
+  n["type"] = "DirectiveLeaf"
+  n["name"] = name
+  n["attrs"] = attrs
+  return n
+}
+
+export fn includeNode(path, resolved, error, children) {
+  let n = {}
+  n["type"] = "Include"
+  n["path"] = path
+  n["resolved"] = resolved
+  n["error"] = error
+  n["children"] = children
+  return n
+}
+
+// --- Extended GFM/CommonMark-ish nodes for README rendering ----------------
+// Added so the same TishDoc pipeline can render arbitrary `README.md` files
+// (e.g. VS Code extension marketplace pages). These coexist with the
+// existing TishDoc nodes; older renderers should fall through to a no-op
+// for unknown `type` values.
+
+export fn italicNode(children) {
+  let n = {}
+  n["type"] = "Italic"
+  n["children"] = children
+  return n
+}
+
+export fn strikethroughNode(children) {
+  let n = {}
+  n["type"] = "Strikethrough"
+  n["children"] = children
+  return n
+}
+
+export fn linkNode(href, title, children) {
+  let n = {}
+  n["type"] = "Link"
+  n["href"] = href
+  n["title"] = title
+  n["children"] = children
+  return n
+}
+
+export fn imageNode(src, alt, title) {
+  let n = {}
+  n["type"] = "Image"
+  n["src"] = src
+  n["alt"] = alt
+  n["title"] = title
+  return n
+}
+
+export fn lineBreakNode() {
+  let n = {}
+  n["type"] = "LineBreak"
+  return n
+}
+
+export fn blockQuoteNode(children) {
+  let n = {}
+  n["type"] = "BlockQuote"
+  n["children"] = children
+  return n
+}
+
+export fn thematicBreakNode() {
+  let n = {}
+  n["type"] = "ThematicBreak"
+  return n
+}
+
+export fn orderedListNode(start, items) {
+  let n = {}
+  n["type"] = "OrderedList"
+  n["start"] = start
+  n["items"] = items
+  return n
+}
+
+export fn tableNode(aligns, header, rows) {
+  let n = {}
+  n["type"] = "Table"
+  n["aligns"] = aligns
+  n["header"] = header
+  n["rows"] = rows
+  return n
+}
+
+export fn tableCellNode(children) {
+  let n = {}
+  n["type"] = "TableCell"
+  n["children"] = children
+  return n
+}

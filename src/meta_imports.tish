@@ -1,0 +1,89 @@
+// Optional frontmatter `imports` map: logical name → relative path string.
+// Expanded by prepending resolved file contents to the body before directive `::include` resolution.
+// Nested maps require JSON frontmatter today; minimal YAML is flat key/value only.
+
+fn metaImportsValue(meta) {
+  if (meta === null || typeof meta !== "object") {
+    return null
+  }
+  let ks = Object.keys(meta)
+  let i = 0
+  while (i < ks.length) {
+    if (ks[i] === "imports") {
+      return meta[ks[i]]
+    }
+    i = i + 1
+  }
+  return null
+}
+
+export fn applyMetaImportsToBody(meta, body, readPartial, allDiag) {
+  let b = body
+  if (b === null) {
+    b = ""
+  }
+  if (typeof b !== "string") {
+    b = String(b)
+  }
+  let im = metaImportsValue(meta)
+  if (im === null || typeof im !== "object") {
+    let r0 = {}
+    r0["body"] = b
+    return r0
+  }
+  if (Array.isArray(im)) {
+    let d0 = {}
+    d0["level"] = "warn"
+    d0["message"] = "meta imports: expected object map, got array — ignored"
+    allDiag.push(d0)
+    let r1 = {}
+    r1["body"] = b
+    return r1
+  }
+  if (readPartial === null) {
+    let d1 = {}
+    d1["level"] = "warn"
+    d1["message"] = "meta imports present but readPartial is null — imports not expanded"
+    allDiag.push(d1)
+    let r2 = {}
+    r2["body"] = b
+    return r2
+  }
+  let keys = Object.keys(im)
+  let prep = ""
+  let ki = 0
+  while (ki < keys.length) {
+    let logical = keys[ki]
+    let pathVal = im[logical]
+    if (typeof pathVal !== "string") {
+      let dw = {}
+      dw["level"] = "warn"
+      dw["message"] = "meta imports." + String(logical) + ": expected string path"
+      allDiag.push(dw)
+      ki = ki + 1
+      continue
+    }
+    let content = readPartial(pathVal)
+    if (content === null) {
+      let de = {}
+      de["level"] = "error"
+      de["message"] = "meta imports." + String(logical) + ": not found " + String(pathVal)
+      allDiag.push(de)
+      ki = ki + 1
+      continue
+    }
+    let chunk = typeof content === "string" ? content : String(content)
+    if (prep.length > 0) {
+      prep = prep + "\n"
+    }
+    prep = prep + chunk
+    ki = ki + 1
+  }
+  let out = b
+  if (prep.length > 0) {
+    out = prep + "\n\n" + b
+  }
+  let rf = {}
+  rf["body"] = out
+  return rf
+}

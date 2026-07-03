@@ -1,0 +1,118 @@
+// Well-known meta keys; optional strict mode.
+// Missing keys: direct `obj["k"]` throws in Tish — use safeGet for optional fields.
+
+fn safeGet(obj, key) {
+  let ks = Object.keys(obj)
+  let i = 0
+  while (i < ks.length) {
+    if (ks[i] === key) {
+      return obj[ks[i]]
+    }
+    i = i + 1
+  }
+  return null
+}
+
+fn diag(level, message) {
+  let d = {}
+  d["level"] = level
+  d["message"] = message
+  return d
+}
+
+export fn validateMeta(meta, options) {
+  let diagnostics = []
+  if (meta === null || typeof meta !== "object") {
+    let r = {}
+    r["diagnostics"] = diagnostics
+    return r
+  }
+  let strict = false
+  if (options !== null && safeGet(options, "strictMeta") === true) {
+    strict = true
+  }
+
+  let keys = Object.keys(meta)
+  let ki = 0
+  while (ki < keys.length) {
+    let k = keys[ki]
+    if (!isKnownMetaKey(k)) {
+      if (strict) {
+        diagnostics.push(diag("error", "Unknown meta key (strict): " + k))
+      } else {
+        diagnostics.push(diag("warn", "Unknown meta key: " + k))
+      }
+    }
+    ki = ki + 1
+  }
+
+  let dt = safeGet(meta, "doc_type")
+  if (dt === null) {
+    dt = safeGet(meta, "kind")
+  }
+  if (dt !== null && String(dt) !== "") {
+    if (!isKnownDocType(String(dt))) {
+      diagnostics.push(diag("warn", "Unknown doc_type/kind: " + String(dt) + " (expected note|deck|resume|whitepaper)"))
+    }
+  }
+
+  let r2 = {}
+  r2["diagnostics"] = diagnostics
+  return r2
+}
+
+fn isKnownMetaKey(k) {
+  if (k === "title") {
+    return true
+  }
+  if (k === "description") {
+    return true
+  }
+  if (k === "doc_type") {
+    return true
+  }
+  if (k === "kind") {
+    return true
+  }
+  if (k === "theme") {
+    return true
+  }
+  if (k === "layout") {
+    return true
+  }
+  if (k === "author") {
+    return true
+  }
+  if (k === "date") {
+    return true
+  }
+  if (k === "tags") {
+    return true
+  }
+  if (k === "imports") {
+    return true
+  }
+  if (k === "export") {
+    return true
+  }
+  if (k === "pdf") {
+    return true
+  }
+  return false
+}
+
+fn isKnownDocType(dt) {
+  if (dt === "note") {
+    return true
+  }
+  if (dt === "deck") {
+    return true
+  }
+  if (dt === "resume") {
+    return true
+  }
+  if (dt === "whitepaper") {
+    return true
+  }
+  return false
+}

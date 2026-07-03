@@ -1,0 +1,6 @@
+import { resolveIncludesInBody } from "../src/includes.tish"
+
+let o = {}
+o["readPartial"] = null
+let r = resolveIncludesInBody("hello", o)
+console.log(JSON.stringify(r))

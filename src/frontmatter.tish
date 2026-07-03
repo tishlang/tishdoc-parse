@@ -1,0 +1,160 @@
+import { parseSimpleYamlBlock } from "./yaml_simple.tish"
+
+fn makeFm(meta, body, metaRaw, diagnostics, language) {
+  let out = {}
+  out.meta = meta
+  out.body = body
+  out.metaRaw = metaRaw
+  out.diagnostics = diagnostics
+  out.language = language
+  return out
+}
+
+fn splitJsonFrontmatterFromStart(raw) {
+  if (!raw.startsWith("{")) {
+    return null
+  }
+  let depth = 0
+  let i = 0
+  let inStr = false
+  let strQuote = ""
+  let esc = false
+  while (i < raw.length) {
+    let c = raw.charAt(i)
+    if (inStr) {
+      if (esc) {
+        esc = false
+      } else if (c === "\\") {
+        esc = true
+      } else if (c === strQuote) {
+        inStr = false
+      }
+      i = i + 1
+      continue
+    }
+    if (c === "\"" || c === "'") {
+      inStr = true
+      strQuote = c
+      i = i + 1
+      continue
+    }
+    if (c === "{") {
+      depth = depth + 1
+    } else if (c === "}") {
+      depth = depth - 1
+      if (depth === 0) {
+        let jsonStr = raw.slice(0, i + 1)
+        let rest = raw.slice(i + 1)
+        let k = 0
+        while (k < rest.length) {
+          let ch = rest.charAt(k)
+          if (ch !== " " && ch !== "\t" && ch !== "\r" && ch !== "\n") {
+            break
+          }
+          k = k + 1
+        }
+        rest = rest.slice(k)
+        if (rest.length > 0 && rest.charAt(0) !== "\n") {
+          rest = "\n" + rest
+        }
+        let jr = {}
+        jr.jsonStr = jsonStr
+        jr.rest = rest
+        return jr
+      }
+    }
+    i = i + 1
+  }
+  return null
+}
+
+export fn matterPing() {
+  return 99
+}
+
+export fn splitMatter(raw) {
+  let diagnostics = []
+  if (raw === null) {
+    return makeFm({}, "", "", diagnostics, "")
+  }
+  let s = raw
+  if (typeof s !== "string") {
+    s = String(s)
+  }
+  let lines = s.split("\n")
+  if (lines.length === 0) {
+    return makeFm({}, s, "", diagnostics, "")
+  }
+
+  if (!lines[0].startsWith("---")) {
+    if (s.trim().startsWith("{")) {
+      let r = splitJsonFrontmatterFromStart(s)
+      if (r !== null) {
+        let metaJson = {}
+        try {
+          metaJson = JSON.parse(r.jsonStr)
+        } catch (e) {
+          let de = {}
+          de.level = "error"
+          de.message = "Invalid JSON frontmatter"
+          diagnostics.push(de)
+          return makeFm({}, s, r.jsonStr, diagnostics, "json")
+        }
+        return makeFm(metaJson, r.rest, r.jsonStr, diagnostics, "json")
+      }
+    }
+  }
+
+  if (!lines[0].startsWith("---")) {
+    return makeFm({}, s, "", diagnostics, "")
+  }
+
+  let lang = "yaml"
+  let rest0 = lines[0].trim().slice(3).trim()
+  if (rest0 !== "") {
+    lang = rest0
+  }
+
+  let i = 1
+  let found = false
+  let matterLines = []
+  while (i < lines.length) {
+    let line = lines[i]
+    if (line.trim() === "---") {
+      found = true
+      break
+    }
+    matterLines.push(line)
+    i = i + 1
+  }
+
+  if (!found) {
+    let du = {}
+    du.level = "warn"
+    du.message = "Unclosed frontmatter fence; treating whole file as body"
+    diagnostics.push(du)
+    return makeFm({}, s, "", diagnostics, "")
+  }
+
+  let matterStr = matterLines.join("\n")
+  let bodyLines = []
+  let j = i + 1
+  while (j < lines.length) {
+    bodyLines.push(lines[j])
+    j = j + 1
+  }
+  let body = bodyLines.join("\n")
+
+  let meta = {}
+  if (lang === "yaml" || lang === "yml") {
+    meta = parseSimpleYamlBlock(matterStr)
+  } else {
+    let dw = {}
+    dw.level = "warn"
+    dw.message = "Frontmatter language not supported for fence: " + lang + "; use yaml, yml, or JSON object at file start."
+    diagnostics.push(dw)
+    return makeFm({}, body, matterStr, diagnostics, lang)
+  }
+
+  return makeFm(meta, body, matterStr, diagnostics, lang)
+}

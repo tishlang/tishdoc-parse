@@ -1,0 +1,180 @@
+// Resolve `::include{path="relative.md"}` or `::include{path=relative.md}` in source (no remote URLs).
+// Helpers must appear before `resolveOnce` / export so `tish run` on this module alone sees them.
+
+fn trimIncludePath(s) {
+  let a = 0
+  let b = s.length
+  while (a < b) {
+    let c = s.charAt(a)
+    if (c !== " " && c !== "\t" && c !== "\r" && c !== "\n") {
+      break
+    }
+    a = a + 1
+  }
+  while (b > a) {
+    let c2 = s.charAt(b - 1)
+    if (c2 !== " " && c2 !== "\t" && c2 !== "\r" && c2 !== "\n") {
+      break
+    }
+    b = b - 1
+  }
+  return s.slice(a, b)
+}
+
+fn arrayContains(arr, v) {
+  let i = 0
+  while (i < arr.length) {
+    if (arr[i] === v) {
+      return true
+    }
+    i = i + 1
+  }
+  return false
+}
+
+fn resolveOnce(text, readPartial, maxDepth, visited, depth, diagnostics) {
+  if (depth > maxDepth) {
+    let d1 = {}
+    d1["level"] = "error"
+    d1["message"] = "Include max depth exceeded (" + String(maxDepth) + ")"
+    diagnostics.push(d1)
+    let rx = {}
+    rx["body"] = text
+    rx["diagnostics"] = diagnostics
+    return rx
+  }
+
+  let marker = "::include{path="
+  let out = ""
+  let pos = 0
+  while (pos < text.length) {
+    let idx = text.indexOf(marker, pos)
+    if (idx === -1) {
+      out = out + text.slice(pos)
+      break
+    }
+    out = out + text.slice(pos, idx)
+    let pathStart = idx + marker.length
+    let path = ""
+    let endDirective = -1
+    if (pathStart >= text.length) {
+      let d0 = {}
+      d0["level"] = "error"
+      d0["message"] = "Incomplete ::include after path="
+      diagnostics.push(d0)
+      out = out + text.slice(idx)
+      break
+    }
+    if (text.charAt(pathStart) === "\"") {
+      let closeQuote = text.indexOf("\"", pathStart + 1)
+      if (closeQuote === -1) {
+        let d2 = {}
+        d2["level"] = "error"
+        d2["message"] = "Unclosed path in ::include"
+        diagnostics.push(d2)
+        out = out + text.slice(idx)
+        break
+      }
+      path = text.slice(pathStart + 1, closeQuote)
+      let afterQuote = closeQuote + 1
+      if (afterQuote >= text.length || text.charAt(afterQuote) !== "}") {
+        let d3 = {}
+        d3["level"] = "error"
+        d3["message"] = "Expected } after path in ::include"
+        diagnostics.push(d3)
+        out = out + text.slice(idx)
+        break
+      }
+      endDirective = afterQuote + 1
+    } else {
+      let endBrace = text.indexOf("}", pathStart)
+      if (endBrace === -1) {
+        let d6 = {}
+        d6["level"] = "error"
+        d6["message"] = "Unclosed ::include (missing })"
+        diagnostics.push(d6)
+        out = out + text.slice(idx)
+        break
+      }
+      path = trimIncludePath(text.slice(pathStart, endBrace))
+      if (path.length === 0) {
+        let d7 = {}
+        d7["level"] = "error"
+        d7["message"] = "Empty path in ::include"
+        diagnostics.push(d7)
+        out = out + text.slice(idx)
+        break
+      }
+      endDirective = endBrace + 1
+    }
+    if (arrayContains(visited, path)) {
+      let d4 = {}
+      d4["level"] = "error"
+      d4["message"] = "Include cycle detected: " + path
+      diagnostics.push(d4)
+      out = out + "<!-- include cycle: " + path + " -->"
+      pos = endDirective
+      continue
+    }
+
+    let content = readPartial(path)
+    if (content === null) {
+      let d5 = {}
+      d5["level"] = "error"
+      d5["message"] = "Include not found: " + path
+      diagnostics.push(d5)
+      out = out + "<!-- missing include: " + path + " -->"
+      pos = endDirective
+      continue
+    }
+
+    let nextVisited = []
+    let vi = 0
+    while (vi < visited.length) {
+      nextVisited.push(visited[vi])
+      vi = vi + 1
+    }
+    nextVisited.push(path)
+
+    let nested = resolveOnce(content, readPartial, maxDepth, nextVisited, depth + 1, diagnostics)
+    out = out + nested["body"]
+    pos = endDirective
+  }
+  let rf = {}
+  rf["body"] = out
+  rf["diagnostics"] = diagnostics
+  return rf
+}
+
+export fn resolveIncludesInBody(srcText, incOpts) {
+  let diagnostics = []
+  if (srcText === null) {
+    let r0 = {}
+    r0["body"] = ""
+    r0["diagnostics"] = diagnostics
+    return r0
+  }
+  let text = typeof srcText === "string" ? srcText : String(srcText)
+  let readPartial = incOpts["readPartial"]
+  if (readPartial === null) {
+    let r1 = {}
+    r1["body"] = text
+    r1["diagnostics"] = diagnostics
+    return r1
+  }
+
+  let maxDepth = incOpts["maxDepth"]
+  if (maxDepth === null) {
+    maxDepth = 16
+  }
+  let visited = incOpts["visited"]
+  if (visited === null) {
+    visited = []
+  }
+  let depth = incOpts["depth"]
+  if (depth === null) {
+    depth = 0
+  }
+
+  return resolveOnce(text, readPartial, maxDepth, visited, depth, diagnostics)
+}

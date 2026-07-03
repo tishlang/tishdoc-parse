@@ -1,0 +1,92 @@
+// Parse `{ key=value key2="v" }` into a plain object (minimal).
+
+import { trim } from "./trim.tish"
+
+export fn parseDirectiveAttrs(s) {
+  let out = {}
+  if (s === null) {
+    return out
+  }
+  let t = trim(typeof s === "string" ? s : String(s))
+  if (t === "") {
+    return out
+  }
+  if (!t.startsWith("{") || !t.endsWith("}")) {
+    return out
+  }
+  let inner = trim(t.slice(1, t.length - 1))
+  if (inner === "") {
+    return out
+  }
+  let parts = splitTopLevelSpaces(inner)
+  let pi = 0
+  while (pi < parts.length) {
+    let p = parts[pi]
+    let eq = p.indexOf("=")
+    if (eq > 0) {
+      let k = trim(p.slice(0, eq))
+      let v = trim(p.slice(eq + 1))
+      if (v.charAt(0) === "\"" && v.charAt(v.length - 1) === "\"") {
+        v = v.slice(1, v.length - 1)
+      } else if (v.charAt(0) === "'" && v.charAt(v.length - 1) === "'") {
+        v = v.slice(1, v.length - 1)
+      }
+      out[k] = v
+    }
+    pi = pi + 1
+  }
+  return out
+}
+
+fn splitTopLevelSpaces(inner) {
+  let out = []
+  let buf = ""
+  let i = 0
+  let depth = 0
+  let inStr = false
+  let sq = ""
+  while (i < inner.length) {
+    let c = inner.charAt(i)
+    if (inStr) {
+      buf = buf + c
+      if (c === sq && inner.charAt(i - 1) !== "\\") {
+        inStr = false
+      }
+      i = i + 1
+      continue
+    }
+    if (c === "\"" || c === "'") {
+      inStr = true
+      sq = c
+      buf = buf + c
+      i = i + 1
+      continue
+    }
+    if (c === "{" || c === "(" || c === "[") {
+      depth = depth + 1
+      buf = buf + c
+      i = i + 1
+      continue
+    }
+    if (c === "}" || c === ")" || c === "]") {
+      depth = depth - 1
+      buf = buf + c
+      i = i + 1
+      continue
+    }
+    if (c === " " && depth === 0) {
+      if (trim(buf) !== "") {
+        out.push(trim(buf))
+      }
+      buf = ""
+      i = i + 1
+      continue
+    }
+    buf = buf + c
+    i = i + 1
+  }
+  if (trim(buf) !== "") {
+    out.push(trim(buf))
+  }
+  return out
+}

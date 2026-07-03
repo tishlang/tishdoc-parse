@@ -1,0 +1,212 @@
+// Unit tests: Markdown-ish block parser (`parseMarkdownToBlocks`) + inline shapes.
+// Run: `tish run test/markdown_blocks.tish` (or `pnpm --filter @tishlang/tishdoc-parse run test`).
+
+import { parseMarkdownToBlocks } from "../src/parse_blocks.tish"
+import { stringifyAst } from "../src/main.tish"
+import { assertEq, assertLen, assertType, assertTruthy } from "./parse_assert.tish"
+
+fn parse(md) {
+  return parseMarkdownToBlocks(md)
+}
+
+fn headingLevel(block) {
+  assertType(block, "Heading", "headingLevel")
+  return block["level"]
+}
+
+fn headingPlainText(block) {
+  assertType(block, "Heading", "headingPlainText")
+  let ch = block["children"]
+  assertLen(ch, 1, "headingPlainText children")
+  assertType(ch[0], "Text", "headingPlainText first child")
+  return ch[0]["value"]
+}
+
+fn firstTextInParagraph(block) {
+  assertType(block, "Paragraph", "firstTextInParagraph")
+  let ch = block["children"]
+  assertTruthy(ch.length > 0, "firstTextInParagraph empty")
+  let i = 0
+  while (i < ch.length) {
+    let n = ch[i]
+    if (n["type"] === "Text") {
+      return n["value"]
+    }
+    i = i + 1
+  }
+  return ""
+}
+
+// --- Headings ---
+
+let h1 = parse("# Title\n")
+assertLen(h1, 1, "h1 count")
+assertEq(headingLevel(h1[0]), 1, "h1 level")
+assertEq(headingPlainText(h1[0]), "Title", "h1 text")
+
+let h3 = parse("### Three hashes\n")
+assertLen(h3, 1, "h3 count")
+assertEq(headingLevel(h3[0]), 3, "h3 level")
+assertEq(headingPlainText(h3[0]), "Three hashes", "h3 text")
+
+let h6 = parse("###### Max level\n")
+assertLen(h6, 1, "h6 count")
+assertEq(headingLevel(h6[0]), 6, "h6 level")
+
+let h7 = parse("####### Too many hashes\n")
+assertLen(h7, 1, "h7 count")
+assertEq(headingLevel(h7[0]), 6, "h7 level capped")
+assertEq(headingPlainText(h7[0]), "# Too many hashes", "h7 remainder keeps extra # in title")
+
+let hIndent = parse("  ## Indented heading\n")
+assertLen(hIndent, 1, "indent heading count")
+assertEq(headingLevel(hIndent[0]), 2, "indent heading level")
+assertEq(headingPlainText(hIndent[0]), "Indented heading", "indent heading text")
+
+// --- Paragraphs & blank lines ---
+
+let p0 = parse("One line paragraph\n")
+assertLen(p0, 1, "single para count")
+assertEq(firstTextInParagraph(p0[0]), "One line paragraph", "single para text")
+
+let p1 = parse("Line one\nLine two\n")
+assertLen(p1, 1, "two-line para count")
+assertType(p1[0], "Paragraph", "two-line para type")
+assertEq(firstTextInParagraph(p1[0]), "Line one", "two-line para starts line one")
+let p1ch = p1[0]["children"]
+let joined = ""
+let pi = 0
+while (pi < p1ch.length) {
+  if (p1ch[pi]["type"] === "Text") {
+    joined = joined + p1ch[pi]["value"]
+  }
+  pi = pi + 1
+}
+assertEq(joined.indexOf("Line two") >= 0, true, "two-line para contains second line")
+
+let blanks = parse("\n\nHello\n\n\nWorld\n")
+assertLen(blanks, 2, "blanks between paras count")
+assertEq(firstTextInParagraph(blanks[0]), "Hello", "blanks first para")
+assertEq(firstTextInParagraph(blanks[1]), "World", "blanks second para")
+
+// --- Inline: emphasis + code ---
+
+let em = parse("Before **bold** after\n")
+assertLen(em, 1, "em para count")
+let emch = em[0]["children"]
+assertLen(emch, 3, "em children count")
+assertType(emch[1], "Emphasis", "em middle type")
+assertEq(emch[1]["children"][0]["type"], "Text", "em inner text type")
+
+let code = parse("Use `x` here\n")
+assertLen(code, 1, "code para count")
+let cch = code[0]["children"]
+assertLen(cch, 3, "code children count")
+assertType(cch[1], "CodeSpan", "code span type")
+assertEq(cch[1]["value"], "x", "code span value")
+
+let mix = parse("**`code` inside bold** and end\n")
+assertLen(mix, 1, "mix para count")
+assertType(mix[0]["children"][0], "Emphasis", "mix outer emphasis")
+
+// --- Fenced code blocks ---
+
+let fence = parse("```ts\nlet a = 1\n```\n")
+assertLen(fence, 1, "fence count")
+assertType(fence[0], "CodeBlock", "fence type")
+assertEq(fence[0]["lang"], "ts", "fence lang")
+assertEq(fence[0]["value"], "let a = 1", "fence body")
+
+let fencePlain = parse("```\nplain\n```\n")
+assertLen(fencePlain, 1, "fencePlain count")
+assertEq(fencePlain[0]["lang"], "", "fencePlain lang")
+assertEq(fencePlain[0]["value"], "plain", "fencePlain body")
+
+let fenceNoClose = parse("```\norphan\n")
+assertLen(fenceNoClose, 1, "fenceNoClose count")
+assertEq(fenceNoClose[0]["value"], "orphan", "fenceNoClose body")
+
+// --- Lists (unordered) ---
+
+let ul = parse("- a\n- b\n")
+assertLen(ul, 1, "ul count")
+assertType(ul[0], "List", "ul type")
+assertEq(ul[0]["ordered"], false, "ul ordered")
+assertLen(ul[0]["items"], 2, "ul items")
+assertType(ul[0]["items"][0], "ListItem", "ul item0 type")
+assertEq(ul[0]["items"][0]["children"][0]["value"], "a", "ul item0 text")
+
+let ulStar = parse("* one\n* two\n")
+assertLen(ulStar, 1, "ulStar count")
+assertLen(ulStar[0]["items"], 2, "ulStar items")
+
+let ulBreak = parse("- first\n\nAfter break\n")
+assertLen(ulBreak, 2, "ulBreak count")
+assertType(ulBreak[0], "List", "ulBreak list")
+assertType(ulBreak[1], "Paragraph", "ulBreak para")
+
+// --- Directive blocks ---
+
+let dir = parse(":::callout {title=Hi}\n\nInner **line**\n\n:::\n")
+assertLen(dir, 1, "dir count")
+assertType(dir[0], "DirectiveBlock", "dir type")
+assertEq(dir[0]["name"], "callout", "dir name")
+assertEq(dir[0]["attrs"]["title"], "Hi", "dir attr title")
+assertLen(dir[0]["children"], 1, "dir inner blocks")
+assertType(dir[0]["children"][0], "Paragraph", "dir inner para")
+
+// --- Directive leaf ---
+
+let leaf = parse("::status {phase=preview}\n")
+assertLen(leaf, 1, "leaf count")
+assertType(leaf[0], "DirectiveLeaf", "leaf type")
+assertEq(leaf[0]["name"], "status", "leaf name")
+assertEq(leaf[0]["attrs"]["phase"], "preview", "leaf phase")
+
+// --- Include leaf (unexpanded) ---
+
+let incLeaf = parse("::include{path=\"x.md\"}\n")
+assertLen(incLeaf, 1, "incLeaf count")
+assertType(incLeaf[0], "Include", "incLeaf type")
+assertEq(incLeaf[0]["path"], "x.md", "incLeaf path")
+assertEq(incLeaf[0]["resolved"], false, "incLeaf resolved")
+assertLen(incLeaf[0]["children"], 0, "incLeaf children")
+
+// --- Include block (still parses inner; resolved flag true in AST) ---
+
+let incBlock = parse(":::include{path=\"p.md\"}\nBody\n:::\n")
+assertLen(incBlock, 1, "incBlock count")
+assertType(incBlock[0], "Include", "incBlock type")
+assertEq(incBlock[0]["path"], "p.md", "incBlock path")
+assertEq(incBlock[0]["resolved"], true, "incBlock resolved")
+assertLen(incBlock[0]["children"], 1, "incBlock inner count")
+assertEq(firstTextInParagraph(incBlock[0]["children"][0]), "Body", "incBlock inner text")
+
+// --- Block order: heading then list then paragraph ---
+
+let order = parse("# H\n\n- i\n\nTail\n")
+assertLen(order, 3, "order count")
+assertType(order[0], "Heading", "order0")
+assertType(order[1], "List", "order1")
+assertType(order[2], "Paragraph", "order2")
+
+// --- Empty / whitespace ---
+
+let empty = parse("")
+assertLen(empty, 0, "empty md")
+
+let ws = parse("   \n\t\n  ")
+assertLen(ws, 0, "whitespace only")
+
+// --- JSON snapshot guard (small doc) ---
+
+let snap = parse("# Snap\n\nHi.\n")
+let js = stringifyAst(snap)
+if (js.indexOf("\"type\":\"Heading\"") < 0) {
+  throw "FAIL snapshot missing Heading in " + js.slice(0, 120)
+}
+if (js.indexOf("\"type\":\"Paragraph\"") < 0) {
+  throw "FAIL snapshot missing Paragraph"
+}
+
+console.log("markdown_blocks: all tests passed")

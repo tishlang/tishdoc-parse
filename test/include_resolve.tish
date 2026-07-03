@@ -1,0 +1,44 @@
+// Include expansion is exercised through `parseDocument` so the same module graph as production runs.
+import { parseDocument, stringifyAst } from "../src/main.tish"
+import { assertEq, assertLen, assertTruthy } from "./parse_assert.tish"
+
+fn readEcho(path) {
+  if (path === "a.md") {
+    return "INNER\n"
+  }
+  return null
+}
+
+let o = {}
+o["readPartial"] = readEcho
+
+let dBare = parseDocument("x ::include{path=a.md} y\n", o)
+assertTruthy(dBare !== null, "dBare not null")
+assertLen(dBare["ast"]["children"], 1, "dBare one paragraph")
+assertEq(dBare["ast"]["children"][0]["type"], "Paragraph", "dBare para")
+
+let q = "x ::include{path="
+q = q + "\""
+q = q + "a.md"
+q = q + "\""
+q = q + "} y\n"
+let dQuoted = parseDocument(q, o)
+assertTruthy(dQuoted !== null, "dQuoted not null")
+assertLen(dQuoted["ast"]["children"], 1, "dQuoted one paragraph")
+
+let sBare = stringifyAst(dBare["ast"])
+assertTruthy(sBare.indexOf("INNER") >= 0, "dBare ast contains INNER")
+
+fn readMissing(p) {
+  return null
+}
+
+let o2 = {}
+o2["readPartial"] = readMissing
+let dMiss = parseDocument("::include{path=specimens/shared.md}\n", o2)
+assertTruthy(dMiss !== null, "dMiss not null")
+let sMiss = stringifyAst(dMiss["ast"])
+assertTruthy(sMiss.indexOf("missing include") >= 0, "dMiss ast mentions missing include")
+assertTruthy(dMiss["diagnostics"].length > 0, "dMiss diagnostics")
+
+console.log("include_resolve: all tests passed")

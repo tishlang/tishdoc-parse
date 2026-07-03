@@ -1,0 +1,46 @@
+// Minimal YAML subset: flat `key: value` lines; `#` comments; quoted values.
+
+import { trim } from "./trim.tish"
+
+export fn parseSimpleYamlBlock(text) {
+  let out = {}
+  let lines = text.split("\n")
+  let i = 0
+  while (i < lines.length) {
+    let line = lines[i]
+    let t = trim(line)
+    if (t === "" || t.charAt(0) === "#") {
+      i = i + 1
+      continue
+    }
+    let colon = t.indexOf(":")
+    if (colon <= 0) {
+      throw new Error("Unsupported YAML line (expected key: value): " + t)
+    }
+    let key = trim(t.slice(0, colon))
+    let rest = trim(t.slice(colon + 1))
+    if (key === "") {
+      throw new Error("Empty YAML key")
+    }
+    if (rest.charAt(0) === "\"" && rest.charAt(rest.length - 1) === "\"") {
+      out[key] = rest.slice(1, rest.length - 1)
+    } else if (rest.charAt(0) === "'" && rest.charAt(rest.length - 1) === "'") {
+      out[key] = rest.slice(1, rest.length - 1)
+    } else if (rest === "true") {
+      out[key] = true
+    } else if (rest === "false") {
+      out[key] = false
+    } else if (rest === "null") {
+      out[key] = null
+    } else {
+      let n = parseFloat(rest)
+      if (!isNaN(n) && String(n) === rest) {
+        out[key] = n
+      } else {
+        out[key] = rest
+      }
+    }
+    i = i + 1
+  }
+  return out
+}

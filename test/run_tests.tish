@@ -1,0 +1,34 @@
+import { parseDocument, stringifyAst } from "../src/main.tish"
+
+fn readMissing(p) {
+  return null
+}
+
+let emptyOpts = {}
+let r1 = parseDocument("---\ntitle: Hello\ndoc_type: note\n---\n\n# Body\n", emptyOpts)
+if (r1 === null) {
+  throw "FAIL parseDocument null"
+}
+if (r1["ast"]["meta"]["title"] !== "Hello") {
+  throw "FAIL meta.title"
+}
+if (r1["ast"]["children"].length < 1) {
+  throw "FAIL children"
+}
+if (r1["bodyStartLine1"] !== 5) {
+  throw "FAIL bodyStartLine1 expected 5 got " + String(r1["bodyStartLine1"])
+}
+console.log("ok yaml frontmatter + heading: " + stringifyAst(r1["ast"]).slice(0, 80))
+
+let r2 = parseDocument("{\"title\":\"J\",\"doc_type\":\"resume\"}\n\nPara **bold**.\n", emptyOpts)
+if (r2["ast"]["meta"]["title"] !== "J") {
+  throw "FAIL json meta"
+}
+console.log("ok json frontmatter")
+
+let incOpts = {}
+incOpts["readPartial"] = readMissing
+let r3 = parseDocument("::include{path=\"missing.md\"}\n", incOpts)
+console.log("ok include diag count " + String(r3["diagnostics"].length))
+
+console.log("all parse tests passed")

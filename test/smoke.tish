@@ -1,0 +1,9 @@
+import { splitMatter, matterPing } from "../src/frontmatter.tish"
+console.log("ping", matterPing())
+console.log(typeof splitMatter)
+let fm = splitMatter("---\ntitle: Hello\n---\n\n# Body\n")
+console.log(typeof fm)
+if (fm !== null) {
+  console.log("title=" + fm.meta.title)
+  console.log("body=" + fm.body)
+}
