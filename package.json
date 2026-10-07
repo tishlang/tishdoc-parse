@@ -28,12 +28,14 @@
   "scripts": {
     "build": "tish build --target js --no-optimize src/main.tish -o dist/tishdoc-parse.js && TISH_EXPORT_OUT=dist/tishdoc-parse.js TISH_EXPORT_NAMES=parseDocument,stringifyDiagnostics,stringifyAst node scripts/append-exports.mjs",
     "test": "tish run test/run_tests.tish && tish run test/golden_note.tish && tish run test/markdown_blocks.tish && tish run test/markdown_document.tish && tish run test/include_resolve.tish && tish run test/meta_imports.tish",
-    "test:native": "npx -y -p @tishlang/tish@3.15.3 tish test test/"
+    "test:native": "npx -y -p @tishlang/tish@3.15.3 tish test test/",
+    "prepack": "npm run build"
   },
   "publishConfig": {
     "access": "public"
   },
   "files": [
+    "dist",
     "src",
     "README.md"
   ]
