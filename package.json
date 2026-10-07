@@ -1,7 +1,8 @@
 {
   "name": "@tishlang/tishdoc-parse",
   "version": "0.1.0",
-  "description": "TishDoc parse pipeline: frontmatter, includes, Markdown+directives → AST",
+  "description": "TishDoc parse pipeline: frontmatter, includes, Markdown+directives \u2192 AST",
+  "license": "MIT",
   "type": "module",
   "tish": {
     "module": "./src/main.tish"
@@ -15,7 +16,10 @@
     }
   },
   "devDependencies": {
-    "@tishlang/tish": "1.9.2"
+    "@semantic-release/commit-analyzer": "^13.0.1",
+    "@semantic-release/release-notes-generator": "^14.1.1",
+    "@tishlang/tish": "1.9.2",
+    "semantic-release": "^25.0.9"
   },
   "repository": {
     "type": "git",
@@ -23,13 +27,15 @@
   },
   "scripts": {
     "build": "tish build --target js --no-optimize src/main.tish -o dist/tishdoc-parse.js && TISH_EXPORT_OUT=dist/tishdoc-parse.js TISH_EXPORT_NAMES=parseDocument,stringifyDiagnostics,stringifyAst node scripts/append-exports.mjs",
-    "test": "tish run test/run_tests.tish && tish run test/golden_note.tish && tish run test/markdown_blocks.tish && tish run test/markdown_document.tish && tish run test/include_resolve.tish && tish run test/meta_imports.tish"
+    "test": "tish run test/run_tests.tish && tish run test/golden_note.tish && tish run test/markdown_blocks.tish && tish run test/markdown_document.tish && tish run test/include_resolve.tish && tish run test/meta_imports.tish",
+    "test:native": "npx -y -p @tishlang/tish@3.15.3 tish test test/",
+    "prepack": "npm run build"
   },
-  "dependencies": {},
   "publishConfig": {
     "access": "public"
   },
   "files": [
+    "dist",
     "src",
     "README.md"
   ]

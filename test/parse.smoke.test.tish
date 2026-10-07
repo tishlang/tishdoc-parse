@@ -1,0 +1,16 @@
+import { describe, it, expect } from "tish:test"
+import { parseDocument } from "../src/main.tish"
+
+describe("tishdoc-parse smoke", () => {
+  it("parses yaml frontmatter", () => {
+    let r = parseDocument("---\ntitle: Hello\ndoc_type: note\n---\n\n# Body\n", {})
+    expect(r).toBeTruthy()
+    expect(r.ast.meta.title).toBe("Hello")
+    expect(r.bodyStartLine1).toBe(5)
+  })
+
+  it("parses json frontmatter", () => {
+    let r = parseDocument("{\"title\":\"J\",\"doc_type\":\"resume\"}\n\nPara **bold**.\n", {})
+    expect(r.ast.meta.title).toBe("J")
+  })
+})

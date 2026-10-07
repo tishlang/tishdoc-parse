@@ -63,7 +63,7 @@ fn valueEqual(a, b) {
   return false
 }
 
-let md = readFile("../../examples/note.tishdoc.md", "utf8")
+let md = readFile("test/fixtures/note.tishdoc.md", "utf8")
 let pr = parseDocument(md, {})
 if (pr === null) {
   throw "FAIL parse null"
@@ -72,7 +72,7 @@ let ast = pr["ast"]
 if (ast["meta"]["title"] !== "Example note") {
   throw "FAIL title"
 }
-let golden = readFile("../../examples/golden/note.ast.json", "utf8")
+let golden = readFile("test/fixtures/golden/note.ast.json", "utf8")
 while (golden.length > 0) {
   let last = golden.charAt(golden.length - 1)
   if (last === "\n" || last === "\r") {
